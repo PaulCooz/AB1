@@ -1,0 +1,158 @@
+@page "/links"
+@rendermode InteractiveServer
+@inject UrlShortener UrlShortener
+@inject NavigationManager Navigation
+
+<PageTitle>Ссылки</PageTitle>
+
+<h1>Ссылки</h1>
+
+@if (!string.IsNullOrEmpty(error))
+{
+    <div class="alert alert-danger" role="alert">@error</div>
+}
+
+@if (items is null)
+{
+    <p><em>Загрузка...</em></p>
+}
+else if (items.Count == 0)
+{
+    <p>Пока нет сохранённых ссылок.</p>
+}
+else
+{
+    <table class="table table-striped align-middle">
+        <thead>
+        <tr>
+            <th>Длинный URL</th>
+            <th>Сокращенный URL</th>
+            <th>Дата создания</th>
+            <th>Количество переходов</th>
+            <th>Управление</th>
+        </tr>
+        </thead>
+        <tbody>
+        @foreach (var item in items)
+        {
+            <tr>
+                <td class="text-break" style="max-width: 22rem;">
+                    @if (editingId == item.Id)
+                    {
+                        <input class="form-control" @bind="editUrl" @bind:event="oninput"/>
+                    }
+                    else
+                    {
+                        <a href="@item.OriginalUrl" target="_blank" rel="noopener noreferrer">@item.OriginalUrl</a>
+                    }
+                </td>
+                <td class="text-break">
+                    <a href="@ShortLink(item.Hash)" target="_blank" rel="noopener noreferrer">@ShortLink(item.Hash)</a>
+                </td>
+                <td>@item.CreatedAtUtc.ToLocalTime().ToString("g")</td>
+                <td>@item.ClickCount</td>
+                <td>
+                    @if (editingId == item.Id)
+                    {
+                        <button type="button" class="btn btn-sm btn-primary me-1" @onclick="() => SaveAsync(item.Id)"
+                                disabled="@isBusy">
+                            Сохранить
+                        </button>
+                        <button type="button" class="btn btn-sm btn-secondary" @onclick="CancelEdit" disabled="@isBusy">
+                            Отмена
+                        </button>
+                    }
+                    else
+                    {
+                        <button type="button" class="btn btn-sm btn-outline-primary me-1"
+                                @onclick="() => StartEdit(item)" disabled="@isBusy">
+                            Редактировать
+                        </button>
+                        <button type="button" class="btn btn-sm btn-outline-danger"
+                                @onclick="() => DeleteAsync(item.Id)" disabled="@isBusy">
+                            Удалить
+                        </button>
+                    }
+                </td>
+            </tr>
+        }
+        </tbody>
+    </table>
+}
+
+@code {
+    private IReadOnlyList<ShortUrl>? items;
+    private string? error;
+    private bool isBusy;
+    private int? editingId;
+    private string editUrl = string.Empty;
+
+    protected override async Task OnInitializedAsync() { await ReloadAsync(); }
+
+    private string ShortLink(string hash) => Navigation.ToAbsoluteUri(hash).ToString();
+
+    private void StartEdit(ShortUrl item)
+    {
+        error = null;
+        editingId = item.Id;
+        editUrl = item.OriginalUrl;
+    }
+
+    private void CancelEdit()
+    {
+        editingId = null;
+        editUrl = string.Empty;
+    }
+
+    private async Task SaveAsync(int id)
+    {
+        error = null;
+        isBusy = true;
+
+        try
+        {
+            await UrlShortener.UpdateOriginalUrlAsync(id, editUrl);
+            CancelEdit();
+            await ReloadAsync();
+        }
+        catch (ArgumentException ex)
+        {
+            error = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task DeleteAsync(int id)
+    {
+        error = null;
+        isBusy = true;
+
+        try
+        {
+            if (editingId == id)
+            {
+                CancelEdit();
+            }
+
+            await UrlShortener.DeleteAsync(id);
+            await ReloadAsync();
+        }
+        catch (Exception ex)
+        {
+            error = ex.Message;
+        }
+        finally
+        {
+            isBusy = false;
+        }
+    }
+
+    private async Task ReloadAsync() { items = await UrlShortener.ListAsync(); }
+}

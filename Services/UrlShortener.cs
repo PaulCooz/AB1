@@ -38,6 +38,37 @@ public sealed class UrlShortener(IDbContextFactory<AppDbContext> dbFactory)
         return entity;
     }
 
+    public async Task<IReadOnlyList<ShortUrl>> ListAsync(CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        return await db.ShortUrls
+            .AsNoTracking()
+            .OrderByDescending(x => x.CreatedAtUtc)
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task UpdateOriginalUrlAsync(int id, string? longUrl, CancellationToken cancellationToken = default)
+    {
+        var normalized = NormalizeUrl(longUrl);
+
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var entity = await db.ShortUrls.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
+            ?? throw new InvalidOperationException("Запись не найдена.");
+
+        entity.OriginalUrl = normalized;
+        await db.SaveChangesAsync(cancellationToken);
+    }
+
+    public async Task DeleteAsync(int id, CancellationToken cancellationToken = default)
+    {
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var deleted = await db.ShortUrls.Where(x => x.Id == id).ExecuteDeleteAsync(cancellationToken);
+        if (deleted == 0)
+        {
+            throw new InvalidOperationException("Запись не найдена.");
+        }
+    }
+
     private static string NormalizeUrl(string? longUrl)
     {
         if (string.IsNullOrWhiteSpace(longUrl))
