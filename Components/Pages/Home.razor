@@ -45,7 +45,7 @@
         try
         {
             var created = await UrlShortener.CreateAsync(longUrl);
-            shortUrl = Navigation.ToAbsoluteUri(created.Hash).ToString();
+            shortUrl = UrlShortener.ToPublicUrl(Navigation.BaseUri, created.Hash);
         }
         catch (ArgumentException ex)
         {

@@ -47,7 +47,8 @@ else
                     }
                 </td>
                 <td class="text-break">
-                    <a href="@ShortLink(item.Hash)" target="_blank" rel="noopener noreferrer">@ShortLink(item.Hash)</a>
+                    <a href="@ShortLink(item.Hash)" target="_blank" rel="noopener noreferrer"
+                       data-enhance-nav="false">@ShortLink(item.Hash)</a>
                 </td>
                 <td>@item.CreatedAtUtc.ToLocalTime().ToString("g")</td>
                 <td>@item.ClickCount</td>
@@ -89,7 +90,7 @@ else
 
     protected override async Task OnInitializedAsync() { await ReloadAsync(); }
 
-    private string ShortLink(string hash) => Navigation.ToAbsoluteUri(hash).ToString();
+    private string ShortLink(string hash) => UrlShortener.ToPublicUrl(Navigation.BaseUri, hash);
 
     private void StartEdit(ShortUrl item)
     {

@@ -53,7 +53,7 @@ public sealed class UrlShortener(IDbContextFactory<AppDbContext> dbFactory)
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var entity = await db.ShortUrls.FirstOrDefaultAsync(x => x.Id == id, cancellationToken)
-            ?? throw new InvalidOperationException("Запись не найдена.");
+                     ?? throw new InvalidOperationException("Запись не найдена.");
 
         entity.OriginalUrl = normalized;
         await db.SaveChangesAsync(cancellationToken);
@@ -67,6 +67,34 @@ public sealed class UrlShortener(IDbContextFactory<AppDbContext> dbFactory)
         {
             throw new InvalidOperationException("Запись не найдена.");
         }
+    }
+
+    public static string ToPublicUrl(string baseUri, string hash)
+        => $"{baseUri.TrimEnd('/')}/s/{Uri.EscapeDataString(hash)}";
+
+    public async Task<string?> ResolveAndCountAsync(string? hash, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(hash))
+            return null;
+
+        hash = Uri.UnescapeDataString(hash);
+
+        await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
+        var originalUrl = await db.ShortUrls
+            .AsNoTracking()
+            .Where(x => x.Hash == hash)
+            .Select(x => x.OriginalUrl)
+            .FirstOrDefaultAsync(cancellationToken);
+
+        if (originalUrl is null)
+            return null;
+
+        // Инкремент в одном UPDATE, чтобы два одновременных перехода не перезаписали один и тот же ClickCount.
+        await db.ShortUrls
+            .Where(x => x.Hash == hash)
+            .ExecuteUpdateAsync(s => s.SetProperty(x => x.ClickCount, x => x.ClickCount + 1), cancellationToken);
+
+        return originalUrl;
     }
 
     private static string NormalizeUrl(string? longUrl)

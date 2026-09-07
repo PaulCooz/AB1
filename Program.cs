@@ -40,6 +40,16 @@ app.UseHttpsRedirection();
 app.UseAntiforgery();
 
 app.MapStaticAssets();
+
+// 301 браузер закэширует: счётчик перестанет расти, а правка длинного URL перестанет применяться.
+app.MapGet("/s/{*hash}", async (string hash, UrlShortener shortener) =>
+{
+    var originalUrl = await shortener.ResolveAndCountAsync(hash);
+    return originalUrl is null
+        ? Results.NotFound()
+        : Results.Redirect(originalUrl);
+});
+
 app.MapRazorComponents<App>()
     .AddInteractiveServerRenderMode();
 
