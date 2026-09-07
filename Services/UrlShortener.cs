@@ -1,3 +1,5 @@
+using System.Buffers.Text;
+using System.Security.Cryptography;
 using AB1.Data;
 using AB1.Models;
 using Microsoft.EntityFrameworkCore;
@@ -6,22 +8,21 @@ namespace AB1.Services;
 
 public sealed class UrlShortener(IDbContextFactory<AppDbContext> dbFactory)
 {
-    public string Compress(string longUrl)
+    public string NewHash()
     {
-        var hash = (int)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        foreach (var c in longUrl)
-            hash = HashCode.Combine(hash, c);
-        return Convert.ToBase64String(BitConverter.GetBytes(hash));
+        Span<byte> bytes = stackalloc byte[9]; // 9 байт = 12 base64Url
+        RandomNumberGenerator.Fill(bytes);
+        return Base64Url.EncodeToString(bytes);
     }
 
     public async Task<ShortUrl> CreateAsync(string? longUrl, CancellationToken cancellationToken = default)
     {
         var normalized = NormalizeUrl(longUrl);
-        var hash = Compress(normalized);
+        var hash = NewHash();
 
         if (string.IsNullOrWhiteSpace(hash))
         {
-            throw new InvalidOperationException("Compress должен вернуть непустой код.");
+            throw new InvalidOperationException("NewHash должен вернуть непустой код.");
         }
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
@@ -70,14 +71,12 @@ public sealed class UrlShortener(IDbContextFactory<AppDbContext> dbFactory)
     }
 
     public static string ToPublicUrl(string baseUri, string hash)
-        => $"{baseUri.TrimEnd('/')}/s/{Uri.EscapeDataString(hash)}";
+        => $"{baseUri.TrimEnd('/')}/s/{hash}";
 
     public async Task<string?> ResolveAndCountAsync(string? hash, CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(hash))
             return null;
-
-        hash = Uri.UnescapeDataString(hash);
 
         await using var db = await dbFactory.CreateDbContextAsync(cancellationToken);
         var originalUrl = await db.ShortUrls

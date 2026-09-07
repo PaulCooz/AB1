@@ -34,7 +34,10 @@ public sealed class UrlShortenerTests : IAsyncLifetime
         var created = await _sut.CreateAsync("  https://example.com/path  ");
 
         Assert.Equal("https://example.com/path", created.OriginalUrl);
-        Assert.False(string.IsNullOrWhiteSpace(created.Hash));
+        Assert.Matches("^[A-Za-z0-9_-]+$", created.Hash);
+        Assert.DoesNotContain('+', created.Hash);
+        Assert.DoesNotContain('/', created.Hash);
+        Assert.DoesNotContain('=', created.Hash);
         Assert.Equal(0, created.ClickCount);
 
         var listed = await _sut.ListAsync();
@@ -69,10 +72,10 @@ public sealed class UrlShortenerTests : IAsyncLifetime
     [Fact]
     public async Task ResolveAndCountAsync_IncrementsClickCount()
     {
-        await SeedAsync("ab+c/d=", "https://example.com/target");
+        await SeedAsync("abcDEFghiJK", "https://example.com/target");
 
-        var first = await _sut.ResolveAndCountAsync("ab+c/d=");
-        var second = await _sut.ResolveAndCountAsync(Uri.EscapeDataString("ab+c/d="));
+        var first = await _sut.ResolveAndCountAsync("abcDEFghiJK");
+        var second = await _sut.ResolveAndCountAsync("abcDEFghiJK");
 
         Assert.Equal("https://example.com/target", first);
         Assert.Equal(first, second);
@@ -87,11 +90,24 @@ public sealed class UrlShortenerTests : IAsyncLifetime
     }
 
     [Fact]
-    public void ToPublicUrl_EncodesReservedCharacters()
+    public void ToPublicUrl_DoesNotEncodeTheCode()
     {
-        var url = UrlShortener.ToPublicUrl("http://localhost:5218/", "a+b/c=");
+        var url = UrlShortener.ToPublicUrl("http://localhost:5218/", "abc_DEF-123");
 
-        Assert.Equal("http://localhost:5218/s/a%2Bb%2Fc%3D", url);
+        Assert.Equal("http://localhost:5218/s/abc_DEF-123", url);
+    }
+
+    [Fact]
+    public void Compress_UsesUrlSafeAlphabet()
+    {
+        for (var i = 0; i < 40; i++)
+        {
+            var code = _sut.NewHash();
+            Assert.Matches("^[A-Za-z0-9_-]+$", code);
+            Assert.DoesNotContain('+', code);
+            Assert.DoesNotContain('/', code);
+            Assert.DoesNotContain('=', code);
+        }
     }
 
     private async Task SeedAsync(string hash, string originalUrl)
