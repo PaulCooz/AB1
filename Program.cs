@@ -1,18 +1,37 @@
 using AB1.Components;
+using AB1.Data;
+using AB1.Services;
+using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
-builder.Services.AddRazorComponents()
+builder.Services
+    .AddRazorComponents()
     .AddInteractiveServerComponents();
+
+var connectionString = builder.Configuration.GetConnectionString("Default") ??
+                       throw new InvalidOperationException("Задайте ConnectionStrings:Default и запустите приложение.");
+
+await DatabaseInitializer.EnsureCreatedAsync(connectionString);
+var serverVersion = ServerVersion.AutoDetect(connectionString);
+
+builder.Services
+    .AddDbContextFactory<AppDbContext>(options => options.UseMariaDb(connectionString, serverVersion))
+    .AddScoped<UrlShortener>();
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
+// Чтобы для запуска хватило строки подключения: создаём БД и накатываем схему сами.
+await using (var scope = app.Services.CreateAsyncScope())
+{
+    var dbFactory = scope.ServiceProvider.GetRequiredService<IDbContextFactory<AppDbContext>>();
+    await using var db = await dbFactory.CreateDbContextAsync();
+    await db.Database.MigrateAsync();
+}
+
 if (!app.Environment.IsDevelopment())
 {
     app.UseExceptionHandler("/Error", createScopeForErrors: true);
-    // The default HSTS value is 30 days. You may want to change this for production scenarios, see https://aka.ms/aspnetcore-hsts.
     app.UseHsts();
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
